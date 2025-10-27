@@ -41,48 +41,47 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LIBVMAF_MODEL_PATH=/usr/share/vmaf/model \
     PATH=/opt/ffmpeg/bin:$PATH
 
-# Core + python runtime
+# Core runtime + Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip ca-certificates git curl tini \
  && rm -rf /var/lib/apt/lists/*
 
-# Add codec runtime libraries required by FFmpeg
+# Codec runtime libs FFmpeg expects at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libass9 libfreetype6 libfribidi0 libmp3lame0 libopus0 libnuma1 \
     libx264-164 libx265-199 libvpx9 libaom3 \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy FFmpeg + libvmaf
+# Bring FFmpeg + libvmaf shared libs from builder
 COPY --from=ffmpeg-build /opt/ffmpeg /opt/ffmpeg
 COPY --from=ffmpeg-build /usr/local/lib/ /usr/local/lib/
 
-# Ensure libvmaf is discoverable
+# Make libvmaf discoverable
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf && ldconfig
 
-# Copy VMAF models
+# VMAF models
 RUN mkdir -p /usr/share/vmaf && \
     git clone --depth=1 https://github.com/Netflix/vmaf.git /tmp/vmaf && \
     cp -r /tmp/vmaf/model /usr/share/vmaf/ && rm -rf /tmp/vmaf
 
-# App setup
+# App
 RUN useradd -ms /bin/bash appuser
 WORKDIR /app
+
+# Copy your project (keep Dockerfile in the same folder as app.py)
 COPY . /app
 
-# Create writable directories for THIS repo
-RUN mkdir -p /app/uploads /app/outputs /app/results && \
+# Ensure writeable folders for API
+RUN mkdir -p /app/uploads /app/outputs && \
     chown -R appuser:appuser /app
 
-# Python deps (FastAPI + upload handler)
+# Python deps
 RUN python3 -m venv /opt/venv && . /opt/venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
-    if [ -s requirements.txt ]; then pip install -r requirements.txt; fi && \
-    pip install fastapi uvicorn[standard] python-multipart
+    if [ -s requirements.txt ]; then pip install -r requirements.txt; fi
 ENV PATH="/opt/venv/bin:${PATH}"
 
 USER appuser
 EXPOSE 8000
-
 ENTRYPOINT ["/usr/bin/tini","--"]
-# 👇 FIXED: start FastAPI app from app.py (module:variable)
 CMD ["uvicorn","app:app","--host","0.0.0.0","--port","8000"]
