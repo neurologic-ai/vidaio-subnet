@@ -69,20 +69,20 @@ RUN useradd -ms /bin/bash appuser
 WORKDIR /app
 COPY . /app
 
-# Create writable directories
-RUN mkdir -p /app/test_videos /app/results /app/output_videos && \
+# Create writable directories for THIS repo
+RUN mkdir -p /app/uploads /app/outputs /app/results && \
     chown -R appuser:appuser /app
 
-# Python deps (FastAPI + FFmpeg helpers)
+# Python deps (FastAPI + upload handler)
 RUN python3 -m venv /opt/venv && . /opt/venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
     if [ -s requirements.txt ]; then pip install -r requirements.txt; fi && \
     pip install fastapi uvicorn[standard] python-multipart
-
 ENV PATH="/opt/venv/bin:${PATH}"
 
 USER appuser
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["uvicorn","api:app","--host","0.0.0.0","--port","8000"]
+# 👇 FIXED: start FastAPI app from app.py (module:variable)
+CMD ["uvicorn","app:app","--host","0.0.0.0","--port","8000"]
