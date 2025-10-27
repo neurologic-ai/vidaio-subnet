@@ -1,0 +1,71 @@
+{
+  "algorithm_name": "H.265 High Efficiency Codec",
+  "algorithm_type": "traditional_codec",
+  "description": "Advanced H.265/HEVC compression with optimized encoding parameters for high quality and efficiency",
+  "author": "Compression Algorithm Team",
+  "version": "2.1.0",
+  "codec_info": {
+    "codec_name": "libx265",
+    "codec_family": "HEVC",
+    "standard": "ITU-T H.265",
+    "year": 2013,
+    "license": "GPL"
+  },
+  "parameters": {
+    "preset": "medium",
+    "crf": 40,
+    "profile": "main",
+    "level": "4.1",
+    "tune": "none",
+    "threads": 2,
+    "tile_columns": 2,
+    "tile_rows": 1
+  },
+  "audio": {
+    "codec": "aac",
+    "bitrate": "128k",
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "optimization_params": {
+  "vmaf_threshold": 85,
+  "w_c": 0.8,
+  "w_vmaf": 0.2,
+  "crf_min": 24,
+  "crf_max": 44,
+  "crf_step": 2
+  },
+  "quality_settings": {
+    "high_quality": {
+      "preset": "slow",
+      "crf": 20,
+      "description": "Best quality, slower encoding"
+    },
+    "balanced": {
+      "preset": "medium", 
+      "crf": 25,
+      "description": "Good balance of quality and speed"
+    },
+    "fast": {
+      "preset": "fast",
+      "crf": 30,
+      "description": "Faster encoding, lower quality"
+    }
+  },
+  "supported_formats": ["mp4", "mov", "avi", "mkv", "webm"],
+  "output_format": "mp4",
+  "expected_compression_ratio": 6.5,
+  "quality_target": "high",
+  "encoding_complexity": "medium",
+  "hardware_acceleration": {
+    "nvidia": "hevc_nvenc",
+    "intel": "hevc_qsv", 
+    "amd": "hevc_amf"
+  },
+  "optimization_notes": [
+    "CRF 18-28 recommended for high quality",
+    "Use 'slow' preset for archival quality",
+    "Tile settings improve parallel processing",
+    "Profile 'main10' for 10-bit encoding"
+  ]
+}
