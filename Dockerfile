@@ -71,9 +71,10 @@ WORKDIR /app
 # Copy your project (keep Dockerfile in the same folder as app.py)
 COPY . /app
 
-# Ensure writeable folders for API
-RUN mkdir -p /app/uploads /app/outputs && \
+# Create writable directories for THIS repo
+RUN mkdir -p /app/uploads /app/outputs /app/results /app/logs && \
     chown -R appuser:appuser /app
+
 
 # Python deps
 RUN python3 -m venv /opt/venv && . /opt/venv/bin/activate && \

@@ -1,0 +1,10 @@
+
+# Project specific
+uploads/
+outputs/
+# logs/
+
+
+# OS
+.DS_Store
+Thumbs.db

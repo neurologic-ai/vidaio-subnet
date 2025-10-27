@@ -14,11 +14,16 @@ docker buildx build --platform linux/amd64   -t <DOCKERHUB_USER>/compression-api
 ### Run Locally
 Prepare directories:
 ```bash
-mkdir -p uploads outputs
+mkdir -p uploads outputs logs
 ```
 Run container:
 ```bash
-docker run --rm -p 8000:8000   -v "$PWD/uploads":/app/uploads   -v "$PWD/outputs":/app/outputs   <DOCKERHUB_USER>/compression-api:v0.1.0
+docker run --rm -p 8000:8000 \
+  -v "$PWD/uploads":/app/uploads \
+  -v "$PWD/outputs":/app/outputs \
+  -v "$PWD/logs":/app/logs \
+  <DOCKERHUB_USER>/compression-api:v0.1.0
+
 ```
 Open: http://localhost:8000/docs
 

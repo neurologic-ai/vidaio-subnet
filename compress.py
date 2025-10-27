@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import time
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import math
@@ -168,9 +169,29 @@ def vmaf_mean_aligned_fast(ref: str,
 
 
 class H265Compressor:
-    def __init__(self, config_file: str = "config.json"):
+    def __init__(self, config_file: str = "config.json", logger: Optional[logging.Logger] = None):
         self.config = self._load_config(config_file)
         self.start_time = None
+        self.logger = logger or self._get_default_logger()
+    
+    def _get_default_logger(self) -> logging.Logger:
+        """Create a default logger if none provided"""
+        logger = logging.getLogger('h265_compressor')
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(message)s'))
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
+    
+    def _log(self, message: str, level: str = 'info'):
+        """Helper method to log messages"""
+        if level == 'info':
+            self.logger.info(message)
+        elif level == 'error':
+            self.logger.error(message)
+        elif level == 'warning':
+            self.logger.warning(message)
 
     def _load_config(self, config_file: str) -> Dict[str, Any]:
         config_path = Path(__file__).parent / config_file
@@ -208,18 +229,18 @@ class H265Compressor:
                     loaded = json.load(f)
                 default_config.update(loaded)
             except Exception as e:
-                print(f"Warning: failed to load config {config_file}: {e}")
+                logging.warning(f"Warning: failed to load config {config_file}: {e}")
         return default_config
 
     def _validate_input(self, input_video: str) -> bool:
         if not os.path.exists(input_video):
-            print(f"Error: Input video file '{input_video}' does not exist!")
+            self._log(f"Error: Input video file '{input_video}' does not exist!", 'error')
             return False
         try:
             with open(input_video, 'rb') as f:
                 f.read(1024)
         except IOError:
-            print(f"Error: Cannot read input video file '{input_video}'!")
+            self._log(f"Error: Cannot read input video file '{input_video}'!", 'error')
             return False
         return True
 
@@ -358,23 +379,23 @@ class H265Compressor:
         Primary VMAF computation entry point: attempt fast sampled aligned VMAF,
         if that fails fallback to robust JSON-based ffmpeg/libvmaf pipeline.
         """
-        print(f"[VMAF] Starting fast aligned VMAF calculation...")
+        self._log(f"[VMAF] Starting fast aligned VMAF calculation...")
         try:
             score = vmaf_mean_aligned_fast(ref_video, dist_video)
-            print(f"[VMAF] Fast VMAF result: {score:.3f}")
+            self._log(f"[VMAF] Fast VMAF result: {score:.3f}")
             return score
         except Exception as e:
-            print(f"[VMAF] Fast VMAF failed: {e}. Falling back to robust method...")
+            self._log(f"[VMAF] Fast VMAF failed: {e}. Falling back to robust method...")
             return self._compute_vmaf_fallback(ref_video, dist_video)
 
     def _compute_vmaf_fallback(self, ref_video: str, dist_video: str) -> float:
         """Robust JSON-based ffmpeg/libvmaf pipeline (previous default)."""
-        print(f"[VMAF] Starting VMAF fallback calculation...")
+        self._log(f"[VMAF] Starting VMAF fallback calculation...")
         try:
             ref_info = self._get_video_info(ref_video)
             ref_stream = self._get_primary_video_stream(ref_info)
             if not ref_stream:
-                print("[VMAF] Could not read reference stream info; skipping VMAF")
+                self._log("[VMAF] Could not read reference stream info; skipping VMAF")
                 return 0.0
 
             w = int(ref_stream.get('width', 0) or 0)
@@ -413,7 +434,7 @@ class H265Compressor:
                 "-f", "null", "-"
             ]
 
-            print(f"[VMAF] Running fallback ffmpeg/libvmaf (command suppressed)...")
+            self._log(f"[VMAF] Running fallback ffmpeg/libvmaf (command suppressed)...")
             proc = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -434,14 +455,14 @@ class H265Compressor:
                         vmaf_scores = [float(frame.get('metrics', {}).get('vmaf', 0)) for frame in frames if 'vmaf' in frame.get('metrics', {})]
                         if vmaf_scores:
                             score = sum(vmaf_scores) / len(vmaf_scores)
-                            print(f"[VMAF] Parsed JSON VMAF (fallback): {score:.3f} (using {log_path})")
+                            self._log(f"[VMAF] Parsed JSON VMAF (fallback): {score:.3f} (using {log_path})")
                             return score
                 except Exception as e:
-                    print(f"[VMAF] JSON parse error in fallback: {e}")
+                    self._log(f"[VMAF] JSON parse error in fallback: {e}")
 
-            print(f"[VMAF] ffmpeg exitcode={proc.returncode}")
-            print(f"[VMAF] ffmpeg stderr (last 2000 chars):\n{(proc.stderr or '')[-2000:]}")
-            print(f"[VMAF] VMAF fallback calculation failed or returned no frames.")
+            self._log(f"[VMAF] ffmpeg exitcode={proc.returncode}")
+            self._log(f"[VMAF] ffmpeg stderr (last 2000 chars):\n{(proc.stderr or '')[-2000:]}")
+            self._log(f"[VMAF] VMAF fallback calculation failed or returned no frames.")
             return 0.0
         finally:
             try:
@@ -474,11 +495,11 @@ class H265Compressor:
             self.config['parameters'] = params
 
             cmd = self._build_ffmpeg_command(input_video, str(tmp_output))
-            print(f"[SCORE] Encoding with CRF={crf} -> {' '.join(cmd[:6])} ...")
+            self._log(f"[SCORE] Encoding with CRF={crf} -> {' '.join(cmd[:6])} ...")
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if proc.returncode != 0:
-                print(f"[SCORE] ffmpeg failed for CRF={crf} rc={proc.returncode}")
-                print((proc.stderr or '')[-1000:])
+                self._log(f"[SCORE] ffmpeg failed for CRF={crf} rc={proc.returncode}")
+                self._log((proc.stderr or '')[-1000:])
                 return -1e9, None
 
             if not tmp_output.exists():
@@ -498,13 +519,13 @@ class H265Compressor:
             # New scoring formula: score = 0.7 * compression + 0.3 * vmaf
             score = 0.7 * compression + 0.3 * vmaf
 
-            print(f"[TEST] CRF={crf}, Orig={orig_size} bytes, Comp={comp_size} bytes, Compression={compression:.6f}, VMAF={vmaf:.2f}, Score={score:.6f}")
+            self._log(f"[TEST] CRF={crf}, Orig={orig_size} bytes, Comp={comp_size} bytes, Compression={compression:.6f}, VMAF={vmaf:.2f}, Score={score:.6f}")
             return score, str(tmp_output)
         except subprocess.TimeoutExpired:
-            print(f"[SCORE] CRF={crf} encoding timed out")
+            self._log(f"[SCORE] CRF={crf} encoding timed out")
             return -1e9, None
         except Exception as e:
-            print(f"[SCORE] Exception for CRF={crf}: {e}")
+            self._log(f"[SCORE] Exception for CRF={crf}: {e}")
             return -1e9, None
         finally:
             self.config = saved_config
@@ -520,7 +541,7 @@ class H265Compressor:
         x1 = int(b - phi * (b - a))
         x2 = int(a + phi * (b - a))
 
-        print(f"[GOLDEN] Starting parallel scoring for CRF {x1} and {x2}")
+        self._log(f"[GOLDEN] Starting parallel scoring for CRF {x1} and {x2}")
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             future_map = {executor.submit(self._score_crf, input_video, x): x for x in (x1, x2)}
@@ -534,18 +555,18 @@ class H265Compressor:
         f2, out2 = results_map.get(x2, (-1e9, None))
 
         while abs(b - a) > tol:
-            print(f"[GOLDEN] Interval: [{a}, {b}] | CRFs: {x1}, {x2}")
+            self._log(f"[GOLDEN] Interval: [{a}, {b}] | CRFs: {x1}, {x2}")
             if f1 > f2:
                 # drop right
                 b, f2, out2, x2 = x2, f1, out1, x1
                 x1 = int(b - phi * (b - a))
-                print(f"[GOLDEN] Scoring CRF {x1}")
+                self._log(f"[GOLDEN] Scoring CRF {x1}")
                 f1, out1 = self._score_crf(input_video, x1)
             else:
                 # drop left
                 a, f1, out1, x1 = x1, f2, out2, x2
                 x2 = int(a + phi * (b - a))
-                print(f"[GOLDEN] Scoring CRF {x2}")
+                self._log(f"[GOLDEN] Scoring CRF {x2}")
                 f2, out2 = self._score_crf(input_video, x2)
 
         if f1 > f2:
@@ -555,59 +576,59 @@ class H265Compressor:
 
     def compress(self, input_video: str, output_video: str) -> bool:
         self.start_time = time.time()
-        print(f"[STEP] Starting compression (Linux-ready)...")
-        print(f"[STEP] Input: {input_video}")
-        print(f"[STEP] Output: {output_video}")
+        self._log(f"[STEP] Starting compression (Linux-ready)...")
+        self._log(f"[STEP] Input: {input_video}")
+        self._log(f"[STEP] Output: {output_video}")
 
         if not self._validate_input(input_video):
-            print(f"[STEP] Input validation failed.")
+            self._log(f"[STEP] Input validation failed.")
             return False
 
         input_ext = Path(input_video).suffix
         if not output_video.endswith(input_ext):
             output_video = str(Path(output_video).with_suffix(input_ext))
-            print(f"[STEP] Output extension forced to match input: {output_video}")
+            self._log(f"[STEP] Output extension forced to match input: {output_video}")
 
         Path(output_video).parent.mkdir(parents=True, exist_ok=True)
-        print(f"[STEP] Output directory ensured.")
+        self._log(f"[STEP] Output directory ensured.")
 
         info = self._get_video_info(input_video)
         if info:
             fmt = info.get('format', {})
             try:
-                print(f"[STEP] Input size {int(fmt.get('size',0))/(1024*1024):.1f} MB, duration {float(fmt.get('duration',0)):.1f}s")
+                self._log(f"[STEP] Input size {int(fmt.get('size',0))/(1024*1024):.1f} MB, duration {float(fmt.get('duration',0)):.1f}s")
             except Exception:
                 pass
 
         cmd = self._build_ffmpeg_command(input_video, output_video)
-        print(f"[STEP] FFmpeg command: {' '.join(cmd)}")
+        self._log(f"[STEP] FFmpeg command: {' '.join(cmd)}")
 
         try:
             params = self.config.get('parameters', {})
             crf_value = params.get('crf', 34)
             preset_value = params.get('preset', 'slow')
-            print(f"[STEP] Preset: {preset_value}, CRF: {crf_value}")
+            self._log(f"[STEP] Preset: {preset_value}, CRF: {crf_value}")
 
-            print(f"[STEP] Running FFmpeg compression...")
+            self._log(f"[STEP] Running FFmpeg compression...")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode == 0:
                 end_time = time.time()
                 duration = end_time - self.start_time
                 if os.path.exists(output_video):
                     out_mb = os.path.getsize(output_video)/(1024*1024)
-                    print(f"[STEP] Compression success: {out_mb:.1f} MB in {duration:.1f}s")
+                    self._log(f"[STEP] Compression success: {out_mb:.1f} MB in {duration:.1f}s")
                 else:
-                    print(f"[STEP] Compression completed in {duration:.1f}s (no output file detected)")
+                    self._log(f"[STEP] Compression completed in {duration:.1f}s (no output file detected)")
                 return True
             else:
-                print(f"[STEP] FFmpeg failed (rc={result.returncode})")
-                print((result.stderr or '')[-2000:])
+                self._log(f"[STEP] FFmpeg failed (rc={result.returncode})")
+                self._log((result.stderr or '')[-2000:])
                 return False
         except subprocess.TimeoutExpired:
-            print("[STEP] Compression timed out")
+            self._log("[STEP] Compression timed out")
             return False
         except Exception as e:
-            print(f"[STEP] Compression exception: {e}")
+            self._log(f"[STEP] Compression exception: {e}")
             return False
 
 
