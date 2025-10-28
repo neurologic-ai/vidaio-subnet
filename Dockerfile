@@ -41,10 +41,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LIBVMAF_MODEL_PATH=/usr/share/vmaf/model \
     PATH=/opt/ffmpeg/bin:$PATH
 
-# Core runtime + Python
+# Core runtime + Python + Nginx
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip ca-certificates git curl tini \
- && rm -rf /var/lib/apt/lists/*
+    python3 python3-venv python3-pip ca-certificates git curl tini nginx \
+&& rm -rf /var/lib/apt/lists/*
 
 # Codec runtime libs FFmpeg expects at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -68,6 +68,10 @@ RUN mkdir -p /usr/share/vmaf && \
 RUN useradd -ms /bin/bash appuser
 WORKDIR /app
 
+# Copy nginx config and startup script first
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY start.sh /tmp/start.sh
+
 # Copy your project (keep Dockerfile in the same folder as app.py)
 COPY . /app
 
@@ -82,7 +86,17 @@ RUN python3 -m venv /opt/venv && . /opt/venv/bin/activate && \
     if [ -s requirements.txt ]; then pip install -r requirements.txt; fi
 ENV PATH="/opt/venv/bin:${PATH}"
 
+# Move and set permissions for startup script
+RUN mv /tmp/start.sh /app/start.sh && chmod +x /app/start.sh && chown appuser:appuser /app/start.sh
+
+# Create nginx runtime directories owned by appuser
+RUN mkdir -p /var/cache/nginx /var/log/nginx /var/run /var/lib/nginx && \
+    chown -R appuser:appuser /var/cache/nginx /var/log/nginx /var/run /var/lib/nginx /tmp && \
+    mkdir -p /etc/nginx/conf.d && \
+    touch /var/log/nginx/access.log /var/log/nginx/error.log && \
+    chown -R appuser:appuser /var/log/nginx
+
 USER appuser
-EXPOSE 8000
+EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["uvicorn","app:app","--host","0.0.0.0","--port","8000"]
+CMD ["/app/start.sh"]

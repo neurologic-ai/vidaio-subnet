@@ -16,9 +16,9 @@ Prepare directories:
 ```bash
 mkdir -p uploads outputs logs
 ```
-Run container:
+Run container (with nginx):
 ```bash
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8000:8080 \
   -v "$PWD/uploads":/app/uploads \
   -v "$PWD/outputs":/app/outputs \
   -v "$PWD/logs":/app/logs \
